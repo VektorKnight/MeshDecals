@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using UnityEditor.Rendering;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Debug = UnityEngine.Debug;
@@ -33,25 +34,46 @@ namespace MeshDecals.Scripts {
             0, 4, 1, 5, 2, 6, 3, 7
         };
 
+        private static readonly int _idSurfaceOffset = Shader.PropertyToID("_Offset");
+
         [Header("Decal Settings")]
         [SerializeField] private ProjectionAxis _axis = ProjectionAxis.Z;
         [SerializeField] private bool _excludeBackfacing;
-
+        [SerializeField] private float _surfaceOffset = 0.001f;
+        
         private List<MeshFilter> _relevantMeshes = new List<MeshFilter>();
-    
-        // Mesh work buffers.
         private Mesh _decalMesh;
-
         private MeshRenderer _renderer;
+
+        private MaterialPropertyBlock _propertyBlock;
     
         private void Start() {
             _decalMesh = new Mesh() {indexFormat = IndexFormat.UInt32};
             _renderer = GetComponent<MeshRenderer>();
             GetComponent<MeshFilter>().mesh = _decalMesh;
+            
+            UpdatePropertyBlock();
+        }
+
+        private void UpdatePropertyBlock() {
+            if (_propertyBlock == null) {
+                _propertyBlock = new MaterialPropertyBlock();
+            }
+            
+            var offsetParams = _axis switch {
+                ProjectionAxis.X => new Vector4(1, 0, 0, _surfaceOffset),
+                ProjectionAxis.Y => new Vector4(0, 1, 0, _surfaceOffset),
+                ProjectionAxis.Z => new Vector4(0, 0, 1, _surfaceOffset),
+                _ => throw new ArgumentOutOfRangeException()
+            };
+            
+            _propertyBlock.SetVector(_idSurfaceOffset, offsetParams);
+            _renderer.SetPropertyBlock(_propertyBlock, 0);
         }
     
         private void Update() {
-            //if (transform.hasChanged) {
+            UpdatePropertyBlock();
+            
             FindRelevantMeshRenderers(_relevantMeshes);
 
             if (_relevantMeshes.Count < 0) {
@@ -61,7 +83,6 @@ namespace MeshDecals.Scripts {
             var sw = new Stopwatch();
             sw.Start();
             
-            //Profiler.BeginSample("Decal Mesh");
             DecalMeshBuilder.BeginDecalMesh(ref _decalMesh, _axis);
 
             var triangleCount = 0u;
@@ -76,16 +97,18 @@ namespace MeshDecals.Scripts {
 
             DecalMeshBuilder.EndDecalMesh(ref _decalMesh);
 
-            //Profiler.EndSample();
-            
             sw.Stop();
             Debug.Log($"Decal Mesh Time: {sw.ElapsedMilliseconds}ms");
             Debug.Log($"Meshes Processed: {_relevantMeshes.Count}");
             Debug.Log($"Triangles Processed: {triangleCount}");
             Debug.Log($"Decal Triangles: {_decalMesh.GetIndexCount(0) / 3}");
-            //}
         }
-
+        
+        /// <summary>
+        /// This was built with the path of least resistance to a working example.
+        /// This search would likely be extremely slow on large and complex scenes.
+        /// Ideally, the decal or some managing system would query meshes intersecting the volume.
+        /// </summary>
         void FindRelevantMeshRenderers(in List<MeshFilter> meshes) {
             meshes.Clear();
         
@@ -95,6 +118,11 @@ namespace MeshDecals.Scripts {
             foreach (var meshRenderer in renderers) {
                 // Skip self.
                 if (meshRenderer == _renderer) {
+                    continue;
+                }
+                
+                // Skip other mesh decals.
+                if (meshRenderer.GetComponent<MeshDecal>()) {
                     continue;
                 }
             

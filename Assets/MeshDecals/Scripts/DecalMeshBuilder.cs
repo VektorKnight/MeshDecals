@@ -324,10 +324,11 @@ namespace MeshDecals.Scripts {
             for (var i = 0; i < uv0.Length; i++) {
                 // Select UVs based upon projection axis of the decal.
                 // Coordinates must be shifted by 0.5 due to the volume being [-0.5, 0.5] but UVs are [0, 1].
+                // Negate these as you see fit to fix texture orientation.
                 var v = finalVertices[i];
                 var uv = _projectionAxis switch {
-                    ProjectionAxis.Z => new Vector2(v.x + 0.5f, v.y + 0.5f),
-                    ProjectionAxis.Y => new Vector2(v.x + 0.5f, v.z + 0.5f),
+                    ProjectionAxis.Z => new Vector2(-v.x + 0.5f, v.y + 0.5f),
+                    ProjectionAxis.Y => new Vector2(-v.x + 0.5f, -v.z + 0.5f),
                     ProjectionAxis.X => new Vector2(v.z + 0.5f, v.y + 0.5f),
                     _ => throw new ArgumentOutOfRangeException()
                 };

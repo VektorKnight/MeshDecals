@@ -6,7 +6,7 @@ Shader "Custom/MeshDecal_Standard"
         _MainTex ("Albedo (RGB)", 2D) = "white" {}
         _Glossiness ("Smoothness", Range(0,1)) = 0.5
         _Metallic ("Metallic", Range(0,1)) = 0.0
-        _Offset ("Surface Offset", Range(0, 1)) = 0.001
+        [PerRendererData] _Offset ("Offset", Vector) = (0, 0, 1, 0.001)
     }
     SubShader
     {
@@ -27,11 +27,11 @@ Shader "Custom/MeshDecal_Standard"
         half4 _Color;
         half _Glossiness;
         half _Metallic;
-        half _Offset;
+        half4 _Offset;
 
         void vert (inout appdata_full v) {
             // Offset from the original surface by a small amount to avoid Z-fighting.
-            v.vertex.xyz += v.normal * _Offset;
+            v.vertex.xyz += _Offset.xyz * _Offset.w;
         }
 
         void surf (Input i, inout SurfaceOutputStandard o) {
