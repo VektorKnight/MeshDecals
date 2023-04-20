@@ -6,6 +6,7 @@ Shader "Custom/MeshDecal_Standard"
         _MainTex ("Albedo (RGB)", 2D) = "white" {}
         _Glossiness ("Smoothness", Range(0,1)) = 0.5
         _Metallic ("Metallic", Range(0,1)) = 0.0
+        _Offset ("Surface Offset", Range(0, 1)) = 0.001
     }
     SubShader
     {
@@ -20,24 +21,21 @@ Shader "Custom/MeshDecal_Standard"
         sampler2D _MainTex;
 
         struct Input {
-            float2 projectedUV;
+            float2 uv_MainTex;
         };
 
+        half4 _Color;
         half _Glossiness;
         half _Metallic;
-        float4 _Color;
+        half _Offset;
 
-        void vert (inout appdata_full v, out Input o) {
+        void vert (inout appdata_full v) {
             // Offset from the original surface by a small amount to avoid Z-fighting.
-            v.vertex.xyz += v.normal * 0.0001f;
-
-            // The UVs are just the local-space positions in the desired plane.
-            // XY is chosen since the default is along Z.
-            o.projectedUV = v.vertex.xy;
+            v.vertex.xyz += v.normal * _Offset;
         }
 
-        void surf (Input IN, inout SurfaceOutputStandard o) {
-            float4 c = tex2D (_MainTex, IN.projectedUV + 0.5f) * _Color;
+        void surf (Input i, inout SurfaceOutputStandard o) {
+            float4 c = tex2D(_MainTex, i.uv_MainTex) * _Color;
             o.Albedo = c.rgb;
             
             o.Metallic = _Metallic * c.a;

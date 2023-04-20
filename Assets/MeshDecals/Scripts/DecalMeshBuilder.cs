@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -26,6 +27,8 @@ namespace MeshDecals.Scripts {
         // Result work buffers.
         private static readonly List<Vector3> _resultVertices = new List<Vector3>();
         private static readonly List<int> _resultTriangles = new List<int>();
+
+        private static ProjectionAxis _projectionAxis = ProjectionAxis.Z;
 
         /// <summary>
         /// Swizzles vertices such that the coordinates for the desired clipping axis end up in XY.
@@ -144,6 +147,9 @@ namespace MeshDecals.Scripts {
         
         /// <summary>
         /// Welds vertices within a certain tolerance.
+        /// Pretty much straight out of the reference below but with a tolerance value.
+        /// References:
+        /// https://forum.unity.com/threads/welding-vertices-at-runtime.1107617/
         /// </summary>
         private static void WeldVertices(
             in List<Vector3> srcVerts,
@@ -187,7 +193,7 @@ namespace MeshDecals.Scripts {
         /// <summary>
         /// Sets everything up to build a decal mesh.
         /// </summary>
-        public static void BeginDecalMesh(ref Mesh mesh) {
+        public static void BeginDecalMesh(ref Mesh mesh, ProjectionAxis axis) {
             if (!mesh) {
                 mesh = new Mesh() { indexFormat = IndexFormat.UInt32 };
             }
@@ -196,6 +202,8 @@ namespace MeshDecals.Scripts {
             
             _resultVertices.Clear();
             _resultTriangles.Clear();
+
+            _projectionAxis = axis;
         }
         
         /// <summary>
@@ -214,75 +222,80 @@ namespace MeshDecals.Scripts {
             _vertexWorkBuffer.Clear();
             _indexWorkBuffer.Clear();
             
-            // TODO: Handle sub-meshes.
+            // Fetch vertices from source mesh.
             src.GetVertices(_vertexWorkBuffer);
-            src.GetTriangles(_indexWorkBuffer, 0);
+            
+            // Walk each sub mesh in the source mesh.
+            for (var si = 0; si < src.subMeshCount; si++) {
+                // Fetch sub-mesh triangles.
+                src.GetTriangles(_indexWorkBuffer, si, true);
 
-            // Walk each triangle in the source mesh.
-            var bounds = BoundingBox.UnitCube();
-            for (var i = 0; i < _indexWorkBuffer.Count; i += 3) {
-                // Fetch vertex positions for the triangle.
-                var v0 = _vertexWorkBuffer[_indexWorkBuffer[i]];
-                var v1 = _vertexWorkBuffer[_indexWorkBuffer[i + 1]];
-                var v2 = _vertexWorkBuffer[_indexWorkBuffer[i + 2]];
-                
-                // Source to world.
-                v0 = srcToWorld.MultiplyPoint(v0);
-                v1 = srcToWorld.MultiplyPoint(v1);
-                v2 = srcToWorld.MultiplyPoint(v2);
-                
-                // World to decal.
-                v0 = worldToDecal.MultiplyPoint(v0);
-                v1 = worldToDecal.MultiplyPoint(v1);
-                v2 = worldToDecal.MultiplyPoint(v2);
-                
-                // If the triangles is fully enclosed, just add it and continue to the next.
-                if (bounds.ContainsPoint(v0) && bounds.ContainsPoint(v1) && bounds.ContainsPoint(v2)) {
-                    _resultVertices.Add(v0);
-                    _resultVertices.Add(v1);
-                    _resultVertices.Add(v2);
-
-                    continue;
+                // Walk each triangle in the sub-mesh.
+                var bounds = BoundingBox.UnitCube();
+                for (var i = 0; i < _indexWorkBuffer.Count; i += 3) {
+                    // Fetch vertex positions for the triangle.
+                    var v0 = _vertexWorkBuffer[_indexWorkBuffer[i]];
+                    var v1 = _vertexWorkBuffer[_indexWorkBuffer[i + 1]];
+                    var v2 = _vertexWorkBuffer[_indexWorkBuffer[i + 2]];
+                    
+                    // Source to world.
+                    v0 = srcToWorld.MultiplyPoint(v0);
+                    v1 = srcToWorld.MultiplyPoint(v1);
+                    v2 = srcToWorld.MultiplyPoint(v2);
+                    
+                    // World to decal.
+                    v0 = worldToDecal.MultiplyPoint(v0);
+                    v1 = worldToDecal.MultiplyPoint(v1);
+                    v2 = worldToDecal.MultiplyPoint(v2);
+                    
+                    // If the triangles is fully enclosed, just add it and continue to the next.
+                    if (bounds.ContainsPoint(v0) && bounds.ContainsPoint(v1) && bounds.ContainsPoint(v2)) {
+                        _resultVertices.Add(v0);
+                        _resultVertices.Add(v1);
+                        _resultVertices.Add(v2);
+    
+                        continue;
+                    }
+    
+                    // Skip if the triangle does not intersect the cube.
+                    // TODO: It's actually slower to try and skip triangles with an intersection test.
+                    /*if (!DecalMeshUtility.TriangleIntersectsUnitCube(v0, v1, v2)) {
+                        continue;
+                    }*/
+    
+                    // Add triangle to polygon work buffer.
+                    _polygonWorkBuffer.Clear();
+                    _polygonWorkBuffer.Add(v0);
+                    _polygonWorkBuffer.Add(v1);
+                    _polygonWorkBuffer.Add(v2);
+                    
+                    // Clip triangle along one axis first.
+                    // This gets the 4 planes of the AABB around that axis.
+                    // Z is chosen here as it does not require a swizzle to move coordinates into XY positions.
+                    ClipPolygons(_polygonWorkBuffer, CLIP_RECT, ProjectionAxis.Z);
+                    
+                    // Skip triangle if clip resulted in a degenerate polygon.
+                    if (_polygonWorkBuffer.Count == 0) {
+                        continue;
+                    }
+                    
+                    // Clip resulting polygon again in an axis orthogonal to the first.
+                    // This handles the remaining two planes of the AABB.
+                    // X is chosen here but Y would work just as well.
+                    // TODO: This actually does 4 plane clips and could be reduced to two.
+                    ClipPolygons(_polygonWorkBuffer, CLIP_RECT, ProjectionAxis.X);
+                    
+                    // Skip if we get a degenerate polygon.
+                    if (_polygonWorkBuffer.Count == 0) {
+                        continue;
+                    }
+                    
+                    // Triangulate the final polygon and add the vertices to the result.
+                    // TODO: Better triangulation methods?
+                    DecalMeshUtility.TriangulatePolygonFan(_polygonWorkBuffer, _resultVertices, out var count);
                 }
-
-                // Skip if the triangle does not intersect the cube.
-                // TODO: It's actually slower to try and skip triangles with an intersection test.
-                /*if (!DecalMeshUtility.TriangleIntersectsUnitCube(v0, v1, v2)) {
-                    continue;
-                }*/
-
-                // Add triangle to polygon work buffer.
-                _polygonWorkBuffer.Clear();
-                _polygonWorkBuffer.Add(v0);
-                _polygonWorkBuffer.Add(v1);
-                _polygonWorkBuffer.Add(v2);
-                
-                // Clip triangle along one axis first.
-                // This gets the 4 planes of the AABB around that axis.
-                // Z is chosen here as it does not require a swizzle to move coordinates into XY positions.
-                ClipPolygons(_polygonWorkBuffer, CLIP_RECT, ProjectionAxis.Z);
-                
-                // Skip triangle if clip resulted in a degenerate polygon.
-                if (_polygonWorkBuffer.Count == 0) {
-                    continue;
-                }
-                
-                // Clip resulting polygon again in an axis orthogonal to the first.
-                // This handles the remaining two planes of the AABB.
-                // X is chosen here but Y would work just as well.
-                // TODO: This actually does 4 plane clips and could be reduced to two.
-                ClipPolygons(_polygonWorkBuffer, CLIP_RECT, ProjectionAxis.X);
-                
-                // Skip if we get a degenerate polygon.
-                if (_polygonWorkBuffer.Count == 0) {
-                    continue;
-                }
-                
-                // Triangulate the final polygon and add the vertices to the result.
-                // TODO: Better triangulation methods?
-                DecalMeshUtility.TriangulatePolygonFan(_polygonWorkBuffer, _resultVertices, out var count);
             }
-
+            
             return _resultVertices.Count >= 3;
         }
         
@@ -305,16 +318,32 @@ namespace MeshDecals.Scripts {
             WeldVertices(_resultVertices, _resultTriangles, out var finalVertices, 0.0001f);
             
             // TODO: Decimation or simplification pass to clean up unnecessary triangles.
-            // TODO: Upload texture coordinates for plane of projection selected by the user.
+            
+            // Compute texture coordinates based on the projection axis.
+            var uv0 = new Vector2[finalVertices.Length];
+            for (var i = 0; i < uv0.Length; i++) {
+                // Select UVs based upon projection axis of the decal.
+                // Coordinates must be shifted by 0.5 due to the volume being [-0.5, 0.5] but UVs are [0, 1].
+                var v = finalVertices[i];
+                var uv = _projectionAxis switch {
+                    ProjectionAxis.Z => new Vector2(v.x + 0.5f, v.y + 0.5f),
+                    ProjectionAxis.Y => new Vector2(v.x + 0.5f, v.z + 0.5f),
+                    ProjectionAxis.X => new Vector2(v.z + 0.5f, v.y + 0.5f),
+                    _ => throw new ArgumentOutOfRangeException()
+                };
+
+                uv0[i] = uv;
+            }
             
             // Set final mesh data.
             result.SetVertices(finalVertices);
+            result.SetUVs(0, uv0);
             result.SetIndices(_resultTriangles, MeshTopology.Triangles, 0);
             
             result.RecalculateBounds();
             result.RecalculateNormals();
             result.Optimize();
-            
+
             return true;
         }
     }

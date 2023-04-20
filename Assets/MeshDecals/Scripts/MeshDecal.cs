@@ -62,7 +62,7 @@ namespace MeshDecals.Scripts {
             sw.Start();
             
             //Profiler.BeginSample("Decal Mesh");
-            DecalMeshBuilder.BeginDecalMesh(ref _decalMesh);
+            DecalMeshBuilder.BeginDecalMesh(ref _decalMesh, _axis);
 
             var triangleCount = 0u;
             foreach (var meshFilter in _relevantMeshes) {
