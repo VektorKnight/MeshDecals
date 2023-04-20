@@ -36,7 +36,7 @@ Shader "Custom/MeshDecal_Standard"
             o.projectedUV = v.vertex.xy;
         }
 
-        void surf (const Input IN, inout SurfaceOutputStandard o) {
+        void surf (Input IN, inout SurfaceOutputStandard o) {
             float4 c = tex2D (_MainTex, IN.projectedUV + 0.5f) * _Color;
             o.Albedo = c.rgb;
             

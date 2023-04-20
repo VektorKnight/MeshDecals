@@ -6,11 +6,14 @@ namespace MeshDecals.Scripts {
     /// Not entirely necessary.
     /// </summary>
     public readonly struct BoundingBox {
-        public readonly Vector3 Min, Max;
+        public readonly Vector3 Min, Max, Center, Extents;
 
         public BoundingBox(Vector3 min, Vector3 max) : this() {
             Min = min;
             Max = max;
+
+            Extents = (Max - Min) * 0.5f;
+            Center = Min + Extents;
         }
         
         /// <summary>

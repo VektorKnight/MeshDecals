@@ -71,7 +71,8 @@ namespace MeshDecals.Scripts {
         }
 
         /// <summary>
-        /// Clips a polygon against the unit square centered on origin using Sutherland-Hodgmann.
+        /// Clips a polygon against another using Sutherland-Hodgmann.
+        /// Polygons must be in clockwise order.
         /// References:
         /// https://en.wikipedia.org/wiki/Sutherland%E2%80%93Hodgman_algorithm
         /// </summary>

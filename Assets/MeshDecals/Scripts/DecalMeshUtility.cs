@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using TMPro;
 using UnityEngine;
 
 namespace MeshDecals.Scripts {
@@ -8,7 +9,7 @@ namespace MeshDecals.Scripts {
         /// Separating axis test for the triangle vs unit cube.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool SeparatingAxisTest(in Vector3 t0, in Vector3 t1, in Vector3 t2, in Vector3 a) {
+        private static bool SeparatingAxisTest(in Vector3 t0, in Vector3 t1, in Vector3 t2, in Vector3 a, in Vector3 e) {
             var r = Vector3.right;
             var u = Vector3.up;
             var f = Vector3.forward;
@@ -17,28 +18,23 @@ namespace MeshDecals.Scripts {
             var p1 = Vector3.Dot(t1, a);
             var p2 = Vector3.Dot(t2, a);
             
-            var i = 0.5f * Mathf.Abs(Vector3.Dot(r, a)) +
-                    0.5f * Mathf.Abs(Vector3.Dot(u, a)) +
-                    0.5f * Mathf.Abs(Vector3.Dot(f, a));
+            var i = e.x * Mathf.Abs(Vector3.Dot(r, a)) +
+                    e.y * Mathf.Abs(Vector3.Dot(u, a)) +
+                    e.z * Mathf.Abs(Vector3.Dot(f, a));
             
             return Mathf.Min(p0, p2) <= i || Mathf.Max(p0, p1) >= -i;
         }
         
         /// <summary>
-        /// Determines if a triangle intersects a unit cube.
-        /// Could be extended to work for any AABB but this was tailor built for the decal system.
-        ///
+        /// Determines if a triangle intersects a bounding box.
         /// References:
         /// https://fileadmin.cs.lth.se/cs/Personal/Tomas_Akenine-Moller/code/tribox_tam.pdf
         /// https://gdbooks.gitbooks.io/3dcollisions/content/Chapter4/aabb-triangle.html
         /// </summary>
-        public static bool TriangleIntersectsUnitCube(in Vector3 t0, in Vector3 t1, in Vector3 t2) {
-            // Bounds of the unit cube centered on origin.
-            var cube = BoundingBox.UnitCube();
-
+        public static bool TriangleIntersectsBox(in Vector3 t0, in Vector3 t1, in Vector3 t2, in BoundingBox box) {
             // Early intersection test.
             // An intersection exists if any vertices lie within the cube.
-            if (cube.ContainsPoint(t0) || cube.ContainsPoint(t1) || cube.ContainsPoint(t2)) {
+            if (box.ContainsPoint(t0) || box.ContainsPoint(t1) || box.ContainsPoint(t2)) {
                 return true;
             }
             
@@ -51,7 +47,7 @@ namespace MeshDecals.Scripts {
                 var bounds = new BoundingBox(min, max);
 
                 // No intersection of the triangle bounds does not intersect the cube.
-                if (!bounds.Intersects(cube)) {
+                if (!bounds.Intersects(box)) {
                     return false;
                 }
 
@@ -60,8 +56,8 @@ namespace MeshDecals.Scripts {
                 var d = Vector3.Dot(n, t0);
 
                 // Compute projection interval of the cube onto the plane.
-                // Since the cube in this case is a unit cube centered on origin, all extents are 0.5.
-                var pi = 0.5f * Mathf.Abs(n.x) + 0.5f * Mathf.Abs(n.y) + 0.5f * Mathf.Abs(n.z);
+                var extents = box.Extents;
+                var pi = extents.x * Mathf.Abs(n.x) + extents.y * Mathf.Abs(n.y) + extents.z * Mathf.Abs(n.z);
 
                 // No intersection if plane distance is outside [-pi, pi].
                 if (Mathf.Abs(d) > pi) {
@@ -95,19 +91,20 @@ namespace MeshDecals.Scripts {
                 var ax8 = Vector3.Cross(cf2, te2);
                 
                 // Test each axis.
-                if (!SeparatingAxisTest(t0, t1, t2, ax0)) { return false; }
-                if (!SeparatingAxisTest(t0, t1, t2, ax1)) { return false; }
-                if (!SeparatingAxisTest(t0, t1, t2, ax2)) { return false; }
+                var extents = box.Extents;
+                if (!SeparatingAxisTest(t0, t1, t2, ax0, extents)) { return false; }
+                if (!SeparatingAxisTest(t0, t1, t2, ax1, extents)) { return false; }
+                if (!SeparatingAxisTest(t0, t1, t2, ax2, extents)) { return false; }
                 
-                if (!SeparatingAxisTest(t0, t1, t2, ax3)) { return false; }
-                if (!SeparatingAxisTest(t0, t1, t2, ax4)) { return false; }
-                if (!SeparatingAxisTest(t0, t1, t2, ax5)) { return false; }
+                if (!SeparatingAxisTest(t0, t1, t2, ax3, extents)) { return false; }
+                if (!SeparatingAxisTest(t0, t1, t2, ax4, extents)) { return false; }
+                if (!SeparatingAxisTest(t0, t1, t2, ax5, extents)) { return false; }
                 
-                if (!SeparatingAxisTest(t0, t1, t2, ax6)) { return false; }
-                if (!SeparatingAxisTest(t0, t1, t2, ax7)) { return false; }
+                if (!SeparatingAxisTest(t0, t1, t2, ax6, extents)) { return false; }
+                if (!SeparatingAxisTest(t0, t1, t2, ax7, extents)) { return false; }
                 
                 // Intersection if all tests have passed at this point.
-                return SeparatingAxisTest(t0, t1, t2, ax8);
+                return SeparatingAxisTest(t0, t1, t2, ax8, extents);
             }
         }
         
