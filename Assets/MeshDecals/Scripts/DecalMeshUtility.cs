@@ -128,5 +128,16 @@ namespace MeshDecals.Scripts {
                 count += 3;
             }
         }
+        
+        /// <summary>
+        /// Computes the face normal of a given triangle.
+        /// </summary>
+        public static Vector3 TriangleNormal(in Vector3 v0, in Vector3 v1, in Vector3 v2, bool normalize = true) {
+            var e0 = v1 - v0;
+            var e1 = v2 - v0;
+            var n = Vector3.Cross(e0, e1);
+
+            return normalize ? n.normalized : n;
+        }
     }
 }

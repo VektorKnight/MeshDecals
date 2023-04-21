@@ -13,7 +13,7 @@
 
 ## Cons
 - Requires integration into a build pipeline and additional editor tooling to facilitate this.
-- Potential increase in draw calls as additional work is needed to work with instancing.
+- Potential increase in draw calls as unique meshes cannot benefit from instancing.
 - Package size and VRAM usage may increase due to each decal requiring a unique mesh.
  
 ## TODO
@@ -21,4 +21,4 @@
 - Simplify decal mesh to remove co-planar triangles.
  
  ## Disclaimer
- This is in no-way a finished product and the goal of this project was to explore the various algorithms involved. The code has been kept relatively simple with decent documentation to serve as an example should you wish to build a similar system for your own projects. While things are at a good stopping point, I may update this project to tackle some remaining TODOs such as mesh simplification and some potential optimizations.
+ This is in no-way a finished product and the goal was to explore the various algorithms involved. The code has been kept relatively simple with decent documentation to serve as an example should you wish to build a similar system for your own projects. While things are at a good stopping point, I may update this project to tackle some remaining TODOs such as mesh simplification and some potential optimizations.

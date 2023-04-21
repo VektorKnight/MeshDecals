@@ -14,6 +14,9 @@ namespace MeshDecals.Scripts {
     [RequireComponent(typeof(MeshFilter))]
     [RequireComponent(typeof(MeshRenderer))]
     public class MeshDecal : MonoBehaviour {
+        // A decimeter seems reasonable.
+        private const float MINIMUM_SCALE = 0.1f;
+
         private static readonly Vector3[] BOX_CORNERS = new[] {
             new Vector3(-0.5f, -0.5f, -0.5f), // BL
             new Vector3(-0.5f, 0.5f, -0.5f),  // TL
@@ -40,11 +43,20 @@ namespace MeshDecals.Scripts {
         [SerializeField] private ProjectionAxis _axis = ProjectionAxis.Z;
         [SerializeField] private bool _excludeBackfacing;
         [SerializeField] private float _surfaceOffset = 0.001f;
+
+        [Header("Debug Drawing")]
+        [SerializeField] private bool _debugDrawVolume = true;
+        [SerializeField] private bool _debugDrawAxis = true;
+        [SerializeField] private bool _debugDrawBounds = false;
+        [SerializeField] private bool _debugDrawSources = false;
+        
+        [SerializeField] private Color _debugVolumeColor = Color.cyan;
+        [SerializeField] private Color _debugBoundsColor = Color.grey;
+        [SerializeField] private Color _debugSourceColor = Color.yellow;
         
         private List<MeshFilter> _relevantMeshes = new List<MeshFilter>();
         private Mesh _decalMesh;
         private MeshRenderer _renderer;
-
         private MaterialPropertyBlock _propertyBlock;
     
         private void Start() {
@@ -83,7 +95,7 @@ namespace MeshDecals.Scripts {
             var sw = new Stopwatch();
             sw.Start();
             
-            DecalMeshBuilder.BeginDecalMesh(ref _decalMesh, _axis);
+            DecalMeshBuilder.BeginDecalMesh(ref _decalMesh, _axis, _excludeBackfacing);
 
             var triangleCount = 0u;
             foreach (var meshFilter in _relevantMeshes) {
@@ -103,13 +115,13 @@ namespace MeshDecals.Scripts {
             Debug.Log($"Triangles Processed: {triangleCount}");
             Debug.Log($"Decal Triangles: {_decalMesh.GetIndexCount(0) / 3}");
         }
-        
+
         /// <summary>
         /// This was built with the path of least resistance to a working example.
         /// This search would likely be extremely slow on large and complex scenes.
         /// Ideally, the decal or some managing system would query meshes intersecting the volume.
         /// </summary>
-        void FindRelevantMeshRenderers(in List<MeshFilter> meshes) {
+        private void FindRelevantMeshRenderers(in List<MeshFilter> meshes) {
             meshes.Clear();
         
             var bounds = GetBounds();
@@ -138,7 +150,11 @@ namespace MeshDecals.Scripts {
                 }
             }
         }
-
+        
+        /// <summary>
+        /// Get the bounding box of this decal.
+        /// </summary>
+        /// <returns></returns>
         private Bounds GetBounds() {
             // Transform all corners to world space then find the min/max.
             var min = transform.position;
@@ -152,50 +168,67 @@ namespace MeshDecals.Scripts {
             return new Bounds(transform.position, max - min);
         }
     
+        #if UNITY_EDITOR
         private void OnDrawGizmos() {
+            // Just clamp scale here.
+            var scale = transform.localScale;
+            transform.localScale = new Vector3(
+                Mathf.Max(MINIMUM_SCALE, scale.x),
+                Mathf.Max(MINIMUM_SCALE, scale.y),
+                Mathf.Max(MINIMUM_SCALE, scale.z)
+            );
+
             // Draw the projection volume.
-            Gizmos.color = Color.cyan;
-            for (var i = 0; i < BOX_EDGES.Length; i += 2) {
-                var p0 = transform.TransformPoint(BOX_CORNERS[BOX_EDGES[i]]);
-                var p1 = transform.TransformPoint(BOX_CORNERS[BOX_EDGES[i + 1]]);
-            
-                Gizmos.DrawLine(p0, p1);
+            if (_debugDrawVolume) {
+                Gizmos.color = _debugVolumeColor;
+                for (var i = 0; i < BOX_EDGES.Length; i += 2) {
+                    var p0 = transform.TransformPoint(BOX_CORNERS[BOX_EDGES[i]]);
+                    var p1 = transform.TransformPoint(BOX_CORNERS[BOX_EDGES[i + 1]]);
+
+                    Gizmos.DrawLine(p0, p1);
+                }
             }
-        
+
             // Draw projection axis.
-            Gizmos.color = _axis switch {
-                ProjectionAxis.X => Color.red,
-                ProjectionAxis.Y => Color.green,
-                ProjectionAxis.Z => Color.blue,
-                _ => throw new ArgumentOutOfRangeException()
-            };
-        
-            var axis = _axis switch {
-                ProjectionAxis.X => Vector3.right,
-                ProjectionAxis.Y => Vector3.up,
-                ProjectionAxis.Z => Vector3.forward,
-                _ => throw new ArgumentOutOfRangeException()
-            };
-        
-            var a0 = transform.TransformPoint(-axis);
-            var a1 = transform.TransformPoint(axis);
-            Gizmos.DrawLine(a0, a1);
-        
-            // Only draw the bounding box if the decal is rotated.
-            return;
-            var angles = transform.rotation.eulerAngles;
-            if (angles.x + angles.y + angles.z > 0.001f) {
-                Gizmos.color = Color.grey;
-                var bounds = GetBounds();
-                Gizmos.DrawWireCube(bounds.center, bounds.size);
+            if (_debugDrawAxis) {
+                Gizmos.color = _axis switch {
+                    ProjectionAxis.X => Color.red,
+                    ProjectionAxis.Y => Color.green,
+                    ProjectionAxis.Z => Color.blue,
+                    _ => throw new ArgumentOutOfRangeException()
+                };
+
+                var axis = _axis switch {
+                    ProjectionAxis.X => transform.right,
+                    ProjectionAxis.Y => transform.up,
+                    ProjectionAxis.Z => transform.forward,
+                    _ => throw new ArgumentOutOfRangeException()
+                };
+                
+                var a0 = transform.TransformPoint(axis * 0.5f) + axis * 0.5f;
+                var a1 = transform.TransformPoint(-axis * 0.5f) - axis * 0.5f;
+                Gizmos.DrawLine(a0, a1);
             }
-        
+
+            // Only draw the bounding box if the decal is rotated.
+            if (_debugDrawBounds) {
+                var angles = transform.rotation.eulerAngles;
+                if (angles.x + angles.y + angles.z > 0.001f) {
+                    Gizmos.color = Color.grey;
+                    var bounds = GetBounds();
+                    Gizmos.DrawWireCube(bounds.center, bounds.size);
+                }
+            }
+
             // Draw bounds of relevant meshes.
-            return;
-            Gizmos.color = Color.yellow;
-            foreach (var meshFilter in _relevantMeshes) {
-                Gizmos.DrawWireCube(meshFilter.transform.position, meshFilter.GetComponent<MeshRenderer>().bounds.size);
+            if (_debugDrawSources) {
+                Gizmos.color = _debugSourceColor;
+                foreach (var meshFilter in _relevantMeshes) {
+                    Gizmos.DrawWireCube(meshFilter.transform.position,
+                        meshFilter.GetComponent<MeshRenderer>().bounds.size);
+                }
             }
         }
+        #endif
     }
 }

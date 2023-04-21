@@ -29,6 +29,8 @@ namespace MeshDecals.Scripts {
         private static readonly List<int> _resultTriangles = new List<int>();
 
         private static ProjectionAxis _projectionAxis = ProjectionAxis.Z;
+        private static Vector3 _projectionVector = Vector3.forward;
+        private static bool _excludeBackFacing = false;
 
         /// <summary>
         /// Swizzles vertices such that the coordinates for the desired clipping axis end up in XY.
@@ -193,7 +195,7 @@ namespace MeshDecals.Scripts {
         /// <summary>
         /// Sets everything up to build a decal mesh.
         /// </summary>
-        public static void BeginDecalMesh(ref Mesh mesh, ProjectionAxis axis) {
+        public static void BeginDecalMesh(ref Mesh mesh, ProjectionAxis axis, bool excludeBackFacing) {
             if (!mesh) {
                 mesh = new Mesh() { indexFormat = IndexFormat.UInt32 };
             }
@@ -204,6 +206,15 @@ namespace MeshDecals.Scripts {
             _resultTriangles.Clear();
 
             _projectionAxis = axis;
+            
+            _projectionVector = axis switch {
+                ProjectionAxis.X => Vector3.right,
+                ProjectionAxis.Y => Vector3.up,
+                ProjectionAxis.Z => Vector3.forward,
+                _ => throw new ArgumentOutOfRangeException(nameof(axis), axis, null)
+            };
+            
+            _excludeBackFacing = excludeBackFacing;
         }
         
         /// <summary>
@@ -247,6 +258,16 @@ namespace MeshDecals.Scripts {
                     v0 = worldToDecal.MultiplyPoint(v0);
                     v1 = worldToDecal.MultiplyPoint(v1);
                     v2 = worldToDecal.MultiplyPoint(v2);
+                    
+                    // Compute normal and exclude if facing away and we want to exclude backfacing triangles.
+                    if (_excludeBackFacing) {
+                        var n = DecalMeshUtility.TriangleNormal(v0, v1, v2, false);
+                        var d = Vector3.Dot(n, _projectionVector);
+
+                        if (d <= 0.0f) {
+                            continue;
+                        }
+                    }
                     
                     // If the triangles is fully enclosed, just add it and continue to the next.
                     if (bounds.ContainsPoint(v0) && bounds.ContainsPoint(v1) && bounds.ContainsPoint(v2)) {
